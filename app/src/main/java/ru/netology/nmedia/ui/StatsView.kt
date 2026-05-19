@@ -2,6 +2,7 @@ package ru.netology.nmedia.ui
 
 import android.content.Context
 import android.graphics.Canvas
+import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.PointF
 import android.graphics.RectF
@@ -22,7 +23,7 @@ class StatsView @JvmOverloads constructor(
     private var center = PointF(0F, 0F)
     private var oval = RectF(0F, 0F, 0F, 0F)
 
-    private var lineWidth = AndroidUtils.dp(context, 5F).toFloat()
+    private var lineWidth = AndroidUtils.dp(context, 20F).toFloat()
     private var fontSize = AndroidUtils.dp(context, 40F).toFloat()
     private var colors = emptyList<Int>()
 
@@ -40,7 +41,7 @@ class StatsView @JvmOverloads constructor(
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         strokeWidth = lineWidth
-        strokeCap = Paint.Cap.BUTT
+        strokeCap = Paint.Cap.ROUND
         strokeJoin = Paint.Join.ROUND
     }
 
@@ -48,7 +49,7 @@ class StatsView @JvmOverloads constructor(
         style = Paint.Style.FILL
         textAlign = Paint.Align.CENTER
         textSize = fontSize
-        color = android.graphics.Color.BLACK
+        color = Color.BLACK
     }
 
     var data: List<Float> = emptyList()
@@ -74,9 +75,7 @@ class StatsView @JvmOverloads constructor(
     }
 
     override fun onDraw(canvas: Canvas) {
-        if (data.isEmpty()) {
-            return
-        }
+        if (data.isEmpty()) return
 
         val percentages = calculatePercentages()
         if (percentages.isEmpty()) {
@@ -86,16 +85,43 @@ class StatsView @JvmOverloads constructor(
             return
         }
 
-        var startFrom = -90F
-        for ((index, fraction) in percentages.withIndex()) {
-            if (fraction == 0F) continue
-            val angle = 360F * fraction
-            paint.color = colors.getOrNull(index) ?: randomColor()
-            canvas.drawArc(oval, startFrom, angle, false, paint)
-            startFrom += angle
+        val sectorAngle = 90F
+
+        // Рисуем основные сектора
+        paint.color = colors.getOrNull(0) ?: randomColor()
+        canvas.drawArc(oval, -90F, sectorAngle, false, paint)
+
+        paint.color = colors.getOrNull(1) ?: randomColor()
+        canvas.drawArc(oval, 0F, sectorAngle, false, paint)
+
+        paint.color = colors.getOrNull(2) ?: randomColor()
+        canvas.drawArc(oval, 90F, sectorAngle, false, paint)
+
+        paint.color = colors.getOrNull(3) ?: randomColor()
+        canvas.drawArc(oval, 180F, sectorAngle, false, paint)
+
+        // Рисуем наложения ТОЛЬКО ПО ШИРИНЕ ЦВЕТА (не по углу)
+        // Используем заливку кружков на концах секторов
+        val overlapDegrees = 3F  // Минимальное наложение по углу
+
+        // Функция для рисования закругленного выступа
+        fun drawOverlap(angle: Float, color: Int) {
+            val x = center.x + radius * Math.cos(Math.toRadians(angle.toDouble())).toFloat()
+            val y = center.y + radius * Math.sin(Math.toRadians(angle.toDouble())).toFloat()
+
+            val circlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                style = Paint.Style.FILL
+                this.color = color
+            }
+            canvas.drawCircle(x, y, lineWidth / 2, circlePaint)
         }
 
-        // Исправлено: показываем 100% вместо суммы значений
+        // Наложения на стыках (только по ширине цвета)
+        drawOverlap(0F, colors.getOrNull(1) ?: randomColor())      // Красный на фиолетовый
+        drawOverlap(90F, colors.getOrNull(2) ?: randomColor())     // Желтый на красный
+        drawOverlap(180F, colors.getOrNull(3) ?: randomColor())    // Зеленый на желтый
+        drawOverlap(270F, colors.getOrNull(0) ?: randomColor())    // Фиолетовый на зеленый
+
         drawCenteredText(canvas, "100.00%")
     }
 
@@ -103,10 +129,23 @@ class StatsView @JvmOverloads constructor(
         val textBounds = android.graphics.Rect()
         textPaint.getTextBounds(text, 0, text.length, textBounds)
 
+        val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.FILL
+            color = Color.WHITE
+        }
+
+        val padding = 30F
+        canvas.drawCircle(
+            center.x,
+            center.y,
+            textBounds.width() / 2F + padding,
+            bgPaint
+        )
+
         canvas.drawText(
             text,
             center.x,
-            center.y + (textBounds.height() / 2F),
+            center.y,
             textPaint
         )
     }
