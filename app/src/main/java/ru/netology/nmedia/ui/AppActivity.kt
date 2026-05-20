@@ -27,5 +27,6 @@ class AppActivity : AppCompatActivity() {
             500F,
             500F,
         )
+        // Анимация запускается автоматически в StatsView
     }
 }

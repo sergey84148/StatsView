@@ -1,13 +1,17 @@
 package ru.netology.nmedia.ui
 
+import android.animation.ObjectAnimator
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.PointF
 import android.graphics.RectF
+import android.os.Handler
+import android.os.Looper
 import android.util.AttributeSet
 import android.view.View
+import android.view.animation.LinearInterpolator
 import androidx.core.content.withStyledAttributes
 import ru.netology.nmedia.R
 import ru.netology.nmedia.util.AndroidUtils
@@ -27,6 +31,24 @@ class StatsView @JvmOverloads constructor(
     private var fontSize = AndroidUtils.dp(context, 40F).toFloat()
     private var colors = emptyList<Int>()
 
+    // Угол вращения (от 0 до 360)
+    private var rotationAngle = 0F
+        set(value) {
+            field = value
+            invalidate()
+        }
+
+    // Прогресс заполнения (от 0 до 1)
+    private var fillProgress = 0F
+        set(value) {
+            field = value
+            invalidate()
+        }
+
+    private val handler = Handler(Looper.getMainLooper())
+    private var rotationAnim: ObjectAnimator? = null
+    private var fillAnim: ObjectAnimator? = null
+
     init {
         context.withStyledAttributes(attrs, R.styleable.StatsView) {
             lineWidth = getDimension(R.styleable.StatsView_lineWidth, lineWidth)
@@ -36,6 +58,47 @@ class StatsView @JvmOverloads constructor(
                 colors = resources.getIntArray(resId).toList()
             }
         }
+
+        startAnimations()
+    }
+
+    private fun startAnimations() {
+        // Анимация вращения: полный оборот за 2 секунды
+        rotationAnim = ObjectAnimator.ofFloat(this, "rotationAngle", 0F, 360F).apply {
+            duration = 2000
+            interpolator = LinearInterpolator()
+        }
+
+        // Анимация заполнения: от 0 до 1 за 2 секунды
+        fillAnim = ObjectAnimator.ofFloat(this, "fillProgress", 0F, 1F).apply {
+            duration = 2000
+        }
+
+        // Запускаем анимации с паузой между повторами
+        runAnimationWithDelay()
+    }
+
+    private fun runAnimationWithDelay() {
+        // Запускаем анимации
+        rotationAnim?.start()
+        fillAnim?.start()
+
+        // Через 5 секунд (2 секунды анимация + 3 секунды пауза) сбрасываем и запускаем снова
+        handler.postDelayed({
+            // Сбрасываем значения
+            rotationAngle = 0F
+            fillProgress = 0F
+
+            // Перезапускаем анимации
+            rotationAnim?.cancel()
+            fillAnim?.cancel()
+
+            rotationAnim?.start()
+            fillAnim?.start()
+
+            // Рекурсивно запускаем следующий цикл
+            runAnimationWithDelay()
+        }, 2500) // 5000 мс = 2 секунды анимация + 3 секунды пауза
     }
 
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -80,47 +143,25 @@ class StatsView @JvmOverloads constructor(
         val percentages = calculatePercentages()
         if (percentages.isEmpty()) {
             paint.color = colors.getOrNull(0) ?: randomColor()
-            canvas.drawArc(oval, -90F, 360F, false, paint)
-            drawCenteredText(canvas, "0%")
+            canvas.drawArc(oval, -90F + rotationAngle, 360F * fillProgress, false, paint)
+            drawCenteredText(canvas, "${(fillProgress * 100).toInt()}%")
             return
         }
 
-        val sectorAngle = 90F
+        // Стартовый угол с учетом вращения
+        var startFrom = -90F + rotationAngle
 
-        // Рисуем основные сектора
-        paint.color = colors.getOrNull(0) ?: randomColor()
-        canvas.drawArc(oval, -90F, sectorAngle, false, paint)
+        for ((index, fraction) in percentages.withIndex()) {
+            if (fraction == 0F) continue
+            val fullSectorAngle = 360F * fraction
+            // Каждый сектор заполняется пропорционально fillProgress
+            val sectorToDraw = fullSectorAngle * fillProgress
 
-        paint.color = colors.getOrNull(1) ?: randomColor()
-        canvas.drawArc(oval, 0F, sectorAngle, false, paint)
+            paint.color = colors.getOrNull(index) ?: randomColor()
+            canvas.drawArc(oval, startFrom, sectorToDraw, false, paint)
 
-        paint.color = colors.getOrNull(2) ?: randomColor()
-        canvas.drawArc(oval, 90F, sectorAngle, false, paint)
-
-        paint.color = colors.getOrNull(3) ?: randomColor()
-        canvas.drawArc(oval, 180F, sectorAngle, false, paint)
-
-        // Рисуем наложения ТОЛЬКО ПО ШИРИНЕ ЦВЕТА (не по углу)
-        // Используем заливку кружков на концах секторов
-        val overlapDegrees = 3F  // Минимальное наложение по углу
-
-        // Функция для рисования закругленного выступа
-        fun drawOverlap(angle: Float, color: Int) {
-            val x = center.x + radius * Math.cos(Math.toRadians(angle.toDouble())).toFloat()
-            val y = center.y + radius * Math.sin(Math.toRadians(angle.toDouble())).toFloat()
-
-            val circlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                style = Paint.Style.FILL
-                this.color = color
-            }
-            canvas.drawCircle(x, y, lineWidth / 2, circlePaint)
+            startFrom += fullSectorAngle
         }
-
-        // Наложения на стыках (только по ширине цвета)
-        drawOverlap(0F, colors.getOrNull(1) ?: randomColor())      // Красный на фиолетовый
-        drawOverlap(90F, colors.getOrNull(2) ?: randomColor())     // Желтый на красный
-        drawOverlap(180F, colors.getOrNull(3) ?: randomColor())    // Зеленый на желтый
-        drawOverlap(270F, colors.getOrNull(0) ?: randomColor())    // Фиолетовый на зеленый
 
         drawCenteredText(canvas, "100.00%")
     }
